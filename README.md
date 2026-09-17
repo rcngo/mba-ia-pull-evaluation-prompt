@@ -8,14 +8,21 @@ resultado com cinco métricas de LLM-as-Judge sobre um dataset de 15 relatos de 
 
 **Status: APROVADO — todas as 5 métricas ≥ 0.8.**
 
-| Métrica | Resultado | Mínimo |
-| --- | --- | --- |
-| Helpfulness | **0.91** ✓ | 0.8 |
-| Correctness | **0.92** ✓ | 0.8 |
-| F1-Score | **0.90** ✓ | 0.8 |
-| Clarity | **0.88** ✓ | 0.8 |
-| Precision | **0.94** ✓ | 0.8 |
-| **Média geral** | **0.9092** | 0.8 |
+Rodei `src/evaluate.py` duas vezes, de forma independente, e reporto as duas. Como as métricas
+são LLM-as-Judge, há variância entre execuções; mostrar as duas é mais honesto do que escolher
+a melhor.
+
+| Métrica | Execução 1 | Execução 2 | Mínimo |
+| --- | --- | --- | --- |
+| Helpfulness | 0.91 ✓ | 0.89 ✓ | 0.8 |
+| Correctness | 0.92 ✓ | 0.90 ✓ | 0.8 |
+| F1-Score | 0.90 ✓ | 0.89 ✓ | 0.8 |
+| Clarity | 0.88 ✓ | 0.86 ✓ | 0.8 |
+| Precision | 0.94 ✓ | 0.91 ✓ | 0.8 |
+| **Média geral** | **0.9092** | **0.8904** | 0.8 |
+
+As duas execuções aprovam em todas as 5 métricas. A menor margem fica em `Clarity` (0.86 no
+pior caso), ainda 0.06 acima do mínimo.
 
 Prompt público: **https://smith.langchain.com/hub/rcngo/bug_to_user_story_v2**
 
@@ -181,13 +188,40 @@ mensagem do usuário. `push_prompts.py` valida que o template exponha exatamente
 | Prompt v2 público no Hub | ![Prompt público](docs/01-prompt-publico-hub.jpg) |
 | Dataset com 15 exemplos | ![Dataset](docs/02-dataset-15-exemplos.jpg) |
 | Tracing do projeto | ![Tracing](docs/03-tracing-projeto.jpg) |
-| Trace detalhado de um exemplo | ![Trace detalhado](docs/04-trace-detalhado.jpg) |
+
+#### Tracing detalhado de 3 exemplos
+
+Os três traces abaixo cobrem as três categorias de complexidade e mostram a estrutura
+adaptativa funcionando na prática — que é o cerne da otimização.
+
+**1. Relato SIMPLES** (`Botão de adicionar ao carrinho não funciona no produto ID 1234`) —
+saída enxuta: story + 5 critérios, sem nenhuma seção extra.
+
+![Trace simples](docs/04-trace-simples.jpg)
+
+**2. Relato MÉDIO** (`Relatório de vendas demora mais de 2 minutos...`) — saída com as três
+partes: story, `Critérios de Aceitação:`, `Critérios Técnicos:` e `Contexto Técnico:`.
+Repare que o critério fixa um teto de 30 segundos, derivado da regra que exige propor um alvo
+concreto quando o relato informa apenas o valor defeituoso (120s).
+
+![Trace médio](docs/05-trace-medio.jpg)
+
+**3. Relato COMPLEXO** (`Sistema de checkout com múltiplas falhas críticas`) — entrada com 4
+problemas numerados e impacto quantificado:
+
+![Trace complexo - entrada](docs/06-trace-complexo-entrada.jpg)
+
+Saída com as seções `=== ... ===` e **um grupo por problema do relato** (A. Segurança,
+B. Integração, C. Lógica de negócio, D. UX), exatamente como a regra de cobertura exige:
+
+![Trace complexo - saída](docs/07-trace-complexo-saida.jpg)
 
 ### Tabela comparativa: v1 (ruim) vs v2 (otimizado)
 
 Ambas as colunas foram medidas com o **mesmo** módulo `src/metrics.py`, os **mesmos** modelos
-e os **mesmos** 15 exemplos. O v1 foi medido localmente porque `src/evaluate.py` avalia apenas
-o prompt v2 — o script não foi alterado.
+e os **mesmos** 15 exemplos, no mesmo harness local — é uma comparação de igual para igual.
+O v1 precisou ser medido localmente porque `src/evaluate.py` avalia apenas o prompt v2, e esse
+script não foi alterado. Os números oficiais do v2, vindos do `evaluate.py`, estão logo abaixo.
 
 | Métrica | v1 (baseline) | v2 (otimizado) | Δ |
 | --- | --- | --- | --- |
@@ -197,8 +231,80 @@ o prompt v2 — o script não foi alterado.
 | Clarity | 0.8467 | **0.8920** | +0.045 |
 | Precision | 0.9100 | **0.9460** | +0.036 |
 
-Execução oficial de `src/evaluate.py` (puxando o prompt do Hub): Helpfulness 0.91,
-Correctness 0.92, F1 0.90, Clarity 0.88, Precision 0.94, média **0.9092**.
+### Saída da avaliação oficial
+
+`src/evaluate.py` calcula as métricas e as imprime no terminal — ele **não** grava os scores
+como feedback nos runs do LangSmith. Por isso a comprovação direta das notas é a saída do
+script, reproduzida abaixo na íntegra (execução 2):
+
+```
+==================================================
+AVALIAÇÃO DE PROMPTS OTIMIZADOS
+==================================================
+
+Provider: openai
+Modelo Principal: gpt-4.1-mini
+Modelo de Avaliação: gpt-4.1
+
+Criando dataset de avaliação: prompt-optimization-challenge-resolved-eval...
+   ✓ Carregados 15 exemplos do arquivo datasets/bug_to_user_story.jsonl
+   ✓ Dataset 'prompt-optimization-challenge-resolved-eval' já existe, usando existente
+
+🔍 Avaliando: rcngo/bug_to_user_story_v2
+   Puxando prompt do LangSmith Hub: rcngo/bug_to_user_story_v2
+   ✓ Prompt carregado com sucesso
+   Dataset: 15 exemplos
+   Avaliando exemplos...
+      [1/15] F1:0.82 Clarity:0.65 Precision:0.70
+      [2/15] F1:0.90 Clarity:0.92 Precision:0.95
+      [3/15] F1:0.95 Clarity:0.92 Precision:1.00
+      [4/15] F1:0.82 Clarity:0.85 Precision:0.93
+      [5/15] F1:0.85 Clarity:0.85 Precision:0.93
+      [6/15] F1:0.85 Clarity:0.85 Precision:0.93
+      [7/15] F1:0.95 Clarity:0.85 Precision:0.97
+      [8/15] F1:0.95 Clarity:0.85 Precision:0.95
+      [9/15] F1:0.95 Clarity:0.95 Precision:1.00
+      [10/15] F1:0.89 Clarity:0.85 Precision:0.93
+      [11/15] F1:0.80 Clarity:0.85 Precision:0.93
+      [12/15] F1:0.85 Clarity:0.85 Precision:0.93
+      [13/15] F1:0.90 Clarity:0.95 Precision:0.93
+      [14/15] F1:0.89 Clarity:0.88 Precision:1.00
+      [15/15] F1:1.00 Clarity:0.85 Precision:0.60
+
+==================================================
+Prompt: rcngo/bug_to_user_story_v2
+==================================================
+
+Métricas Derivadas:
+  - Helpfulness: 0.89 ✓
+  - Correctness: 0.90 ✓
+
+Métricas Base:
+  - F1-Score: 0.89 ✓
+  - Clarity: 0.86 ✓
+  - Precision: 0.91 ✓
+
+--------------------------------------------------
+📊 MÉDIA GERAL: 0.8904
+--------------------------------------------------
+
+✅ STATUS: APROVADO - Todas as métricas >= 0.8
+
+==================================================
+RESUMO FINAL
+==================================================
+
+Prompts avaliados: 1
+Aprovados: 1
+Reprovados: 0
+
+✅ Todos os prompts atingiram todas as métricas >= 0.8!
+```
+
+O detalhamento por exemplo mostra onde fica a variância: o exemplo 1 (Clarity 0.65) e o
+exemplo 15 (Precision 0.60) oscilam entre execuções — na execução 1 os mesmos exemplos
+pontuaram 0.95 e 0.95. As médias agregadas, que é o que o critério avalia, permanecem estáveis
+acima de 0.8 nas duas.
 
 **Onde o ganho realmente está.** O ganho concentra-se em **recall**, que é o componente fraco do
 F1 do v1. O v1 respondia relatos complexos com 221 a 302 palavras contra referências de 567 a
